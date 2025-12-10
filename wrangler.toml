@@ -1,0 +1,42 @@
+name = "maxi-orchestrator"
+main = "workers/orchestrator/worker.ts"
+compatibility_date = "2024-03-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Routes
+routes = [
+  { pattern = "maxi-api.superbots.link/*", zone_name = "superbots.link" }
+]
+
+# Environment variables (secrets set via wrangler secret put)
+[vars]
+AGENT_ID = "maxi"
+AGENT_NAME = "Maxi"
+LLM_PROVIDER = "xai"
+LLM_MODEL = "grok-2"
+TTS_PROVIDER = "elevenlabs"
+ENVIRONMENT = "production"
+
+# KV Namespaces (create and update ID after: wrangler kv:namespace create MAXI_STORE)
+[[kv_namespaces]]
+binding = "AGENT_STORE"
+id = "PLACEHOLDER_KV_ID"
+
+# Vectorize (create after: wrangler vectorize create maxi-vectors --dimensions=768 --metric=cosine)
+[[vectorize]]
+binding = "VECTORS"
+index_name = "maxi-vectors"
+
+# R2 Bucket for assets
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "maxi-assets"
+
+# AI Binding for embeddings
+[ai]
+binding = "AI"
+
+# Secrets needed (set via wrangler secret put):
+# - XAI_API_KEY
+# - ELEVENLABS_API_KEY
+# - GEMINI_API_KEY (for embeddings fallback)

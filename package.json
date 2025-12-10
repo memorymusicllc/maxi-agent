@@ -1,0 +1,56 @@
+{
+  "name": "maxi-agent",
+  "version": "1.0.0",
+  "description": "Maxi - Wellness Coach AI Agent",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build:worker": "esbuild workers/orchestrator/worker.ts --bundle --outfile=dist/worker.js --format=esm --platform=browser",
+    "deploy": "npm run deploy:workers && npm run deploy:pages",
+    "deploy:workers": "wrangler deploy",
+    "deploy:pages": "wrangler pages deploy dist --project-name=maxi-agent",
+    "test": "vitest",
+    "lint": "eslint src --ext ts,tsx"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "zustand": "^4.4.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240320.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "autoprefixer": "^10.4.16",
+    "esbuild": "^0.20.0",
+    "eslint": "^8.56.0",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.3.0",
+    "vite": "^5.0.0",
+    "vitest": "^1.2.0",
+    "wrangler": "^3.30.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "ai-agent",
+    "wellness-coach",
+    "mental-health",
+    "cloudflare-workers",
+    "pwa",
+    "mcp",
+    "pow3r"
+  ],
+  "author": "Memory Music LLC",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/memorymusicllc/maxi-agent.git"
+  },
+  "homepage": "https://maxi.superbots.link"
+}
