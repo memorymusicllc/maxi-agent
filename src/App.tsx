@@ -1,4 +1,21 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import Icon from './components/Icon';
+import SettingsModal from './components/SettingsModal';
+import logger from './utils/logger';
+import { sendChatMessage, ChatResponse } from './services/api';
+
+/**
+ * Maxi Agent - Main Application
+ * 
+ * Guardian Compliance:
+ * - Heroicons only (no emojis)
+ * - All functions log
+ * - Settings accessible
+ * - Pow3r Pass for API keys
+ * - Config-based theming
+ */
+
+const COMPONENT = 'App';
 
 interface Message {
   id: string;
@@ -8,32 +25,69 @@ interface Message {
   audioUrl?: string;
 }
 
-const API_BASE = '/api';
-
 export default function App() {
+  // State
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [darkMode, setDarkMode] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Initialize with greeting
+  useEffect(() => {
+    logger.info(COMPONENT, 'App initialized');
+    
+    const greeting: Message = {
+      id: 'greeting',
+      role: 'assistant',
+      content: "Hey there! I'm Maxi, your wellness coach. I'm here to help you navigate relationships, mental health, and personal growth. What's on your mind today?",
+      timestamp: new Date(),
+    };
+    
+    setMessages([greeting]);
+    logger.success(COMPONENT, 'Greeting message set');
+  }, []);
 
   // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Add greeting on mount
+  // Load preferences from localStorage
   useEffect(() => {
-    setMessages([{
-      id: 'greeting',
-      role: 'assistant',
-      content: "Hey there! I'm Maxi, your wellness coach. I'm here to help you navigate relationships, mental health, and personal growth. What's on your mind today?",
-      timestamp: new Date(),
-    }]);
+    logger.info(COMPONENT, 'Loading preferences from localStorage');
+    
+    const savedVoice = localStorage.getItem('maxi-voice-enabled');
+    const savedDarkMode = localStorage.getItem('maxi-dark-mode');
+    
+    if (savedVoice !== null) {
+      setVoiceEnabled(savedVoice === 'true');
+    }
+    if (savedDarkMode !== null) {
+      setDarkMode(savedDarkMode === 'true');
+    }
+    
+    logger.success(COMPONENT, 'Preferences loaded');
   }, []);
 
-  const sendMessage = async () => {
+  // Save preferences
+  const savePreferences = useCallback(() => {
+    logger.info(COMPONENT, 'Saving preferences');
+    localStorage.setItem('maxi-voice-enabled', String(voiceEnabled));
+    localStorage.setItem('maxi-dark-mode', String(darkMode));
+  }, [voiceEnabled, darkMode]);
+
+  useEffect(() => {
+    savePreferences();
+  }, [voiceEnabled, darkMode, savePreferences]);
+
+  // Send message handler
+  const handleSendMessage = useCallback(async () => {
     if (!input.trim() || isLoading) return;
 
     const userMessage: Message = {
@@ -43,39 +97,40 @@ export default function App() {
       timestamp: new Date(),
     };
 
+    logger.info(COMPONENT, 'Sending user message', { length: userMessage.content.length });
+    
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: userMessage.content,
-          includeVoice: voiceEnabled,
-        }),
+      const response: ChatResponse = await sendChatMessage({
+        message: userMessage.content,
+        includeVoice: voiceEnabled,
       });
-
-      const data = await response.json();
 
       const assistantMessage: Message = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: data.text,
+        content: response.text,
         timestamp: new Date(),
-        audioUrl: data.audioUrl,
+        audioUrl: response.audioUrl,
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+      logger.success(COMPONENT, 'Received assistant response', { length: response.text.length });
 
       // Auto-play audio if available
-      if (data.audioUrl && voiceEnabled) {
-        const audio = new Audio(data.audioUrl);
-        audio.play().catch(console.error);
+      if (response.audioUrl && voiceEnabled) {
+        logger.info(COMPONENT, 'Playing audio response');
+        const audio = new Audio(response.audioUrl);
+        audio.play().catch(error => {
+          logger.error(COMPONENT, 'Audio playback failed', error);
+        });
       }
     } catch (error) {
-      console.error('Chat error:', error);
+      logger.error(COMPONENT, 'Chat error', error);
+      
       setMessages(prev => [...prev, {
         id: crypto.randomUUID(),
         role: 'assistant',
@@ -85,267 +140,148 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [input, isLoading, voiceEnabled]);
+
+  // Handle voice toggle
+  const handleVoiceToggle = useCallback((enabled: boolean) => {
+    logger.info(COMPONENT, `Voice toggled: ${enabled}`);
+    setVoiceEnabled(enabled);
+  }, []);
+
+  // Handle dark mode toggle
+  const handleDarkModeToggle = useCallback((enabled: boolean) => {
+    logger.info(COMPONENT, `Dark mode toggled: ${enabled}`);
+    setDarkMode(enabled);
+  }, []);
+
+  // Handle mic button
+  const handleMicToggle = useCallback(() => {
+    logger.info(COMPONENT, `Mic toggled: ${!isListening}`);
+    setIsListening(!isListening);
+    // Voice input would be implemented here with Web Speech API
+  }, [isListening]);
 
   return (
-    <div className="app">
-      {/* Header */}
-      <header className="header">
-        <div className="avatar">
-          <img src="/assets/maxi/thumbnail.png" alt="Maxi" />
-        </div>
-        <div className="title">
-          <h1>Maxi</h1>
-          <span className="subtitle">Wellness Coach</span>
-        </div>
-        <button 
-          className={`voice-toggle ${voiceEnabled ? 'active' : ''}`}
-          onClick={() => setVoiceEnabled(!voiceEnabled)}
-          title={voiceEnabled ? 'Voice enabled' : 'Voice disabled'}
-        >
-          {voiceEnabled ? '🔊' : '🔇'}
-        </button>
-      </header>
-
-      {/* Messages */}
-      <main className="messages">
-        {messages.map(message => (
-          <div 
-            key={message.id} 
-            className={`message ${message.role}`}
+    <div className={`min-h-screen ${darkMode ? 'dark' : ''}`}>
+      <div className="bg-background text-foreground min-h-screen flex flex-col max-w-2xl mx-auto">
+        {/* Header */}
+        <header className="flex items-center gap-3 p-4 bg-card border-b border-border sticky top-0 z-10">
+          <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center border-2 border-primary/40">
+            <Icon name="heart" className="w-6 h-6 text-primary" />
+          </div>
+          <div className="flex-1">
+            <h1 className="text-lg font-semibold">Maxi</h1>
+            <p className="text-sm text-foreground/60">Wellness Coach</p>
+          </div>
+          <button
+            onClick={() => handleVoiceToggle(!voiceEnabled)}
+            className="p-2 rounded-lg hover:bg-foreground/10 transition-colors"
+            title={voiceEnabled ? 'Voice enabled' : 'Voice disabled'}
           >
-            <div className="message-content">{message.content}</div>
-            <div className="message-time">
-              {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </div>
-          </div>
-        ))}
-        {isLoading && (
-          <div className="message assistant loading">
-            <div className="typing-indicator">
-              <span></span><span></span><span></span>
-            </div>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
-      </main>
+            <Icon 
+              name={voiceEnabled ? 'volume-up' : 'volume-off'} 
+              className="w-5 h-5 text-foreground/60" 
+            />
+          </button>
+          <button
+            onClick={() => {
+              logger.info(COMPONENT, 'Opening settings');
+              setShowSettings(true);
+            }}
+            className="p-2 rounded-lg hover:bg-foreground/10 transition-colors"
+            title="Settings"
+          >
+            <Icon name="settings" className="w-5 h-5 text-foreground/60" />
+          </button>
+        </header>
 
-      {/* Input */}
-      <footer className="input-area">
-        <button 
-          className={`mic-button ${isListening ? 'listening' : ''}`}
-          onClick={() => setIsListening(!isListening)}
-          title="Hold to speak"
-        >
-          🎤
-        </button>
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-          placeholder="Talk to Maxi..."
-          disabled={isLoading}
+        {/* Messages */}
+        <main className="flex-1 overflow-y-auto p-4 space-y-4">
+          {messages.map(message => (
+            <div
+              key={message.id}
+              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div
+                className={`max-w-[85%] p-4 rounded-2xl ${
+                  message.role === 'user'
+                    ? 'bg-primary text-primary-foreground rounded-br-sm'
+                    : 'bg-card border border-border rounded-bl-sm'
+                }`}
+              >
+                <p className="leading-relaxed">{message.content}</p>
+                <p className={`text-xs mt-2 ${
+                  message.role === 'user' ? 'text-primary-foreground/60' : 'text-foreground/40'
+                }`}>
+                  {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              </div>
+            </div>
+          ))}
+          
+          {/* Loading indicator */}
+          {isLoading && (
+            <div className="flex justify-start">
+              <div className="bg-card border border-border rounded-2xl rounded-bl-sm p-4">
+                <div className="flex gap-1">
+                  <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <div ref={messagesEndRef} />
+        </main>
+
+        {/* Input Area */}
+        <footer className="p-4 bg-card border-t border-border sticky bottom-0">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleMicToggle}
+              className={`p-3 rounded-full transition-colors ${
+                isListening 
+                  ? 'bg-red-500 text-white animate-pulse' 
+                  : 'bg-foreground/10 text-foreground/60 hover:bg-foreground/20'
+              }`}
+              title={isListening ? 'Listening...' : 'Voice input'}
+            >
+              <Icon name={isListening ? 'microphone' : 'microphone'} className="w-5 h-5" />
+            </button>
+            
+            <input
+              ref={inputRef}
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+              placeholder="Talk to Maxi..."
+              disabled={isLoading}
+              className="flex-1 bg-background border border-border rounded-full px-4 py-3 text-foreground placeholder:text-foreground/40 focus:outline-none focus:border-primary transition-colors"
+            />
+            
+            <button
+              onClick={handleSendMessage}
+              disabled={!input.trim() || isLoading}
+              className="p-3 rounded-full bg-primary text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary/90 transition-colors"
+              title="Send message"
+            >
+              <Icon name="send" className="w-5 h-5" />
+            </button>
+          </div>
+        </footer>
+
+        {/* Settings Modal */}
+        <SettingsModal
+          isOpen={showSettings}
+          onClose={() => setShowSettings(false)}
+          voiceEnabled={voiceEnabled}
+          onVoiceToggle={handleVoiceToggle}
+          darkMode={darkMode}
+          onDarkModeToggle={handleDarkModeToggle}
         />
-        <button 
-          className="send-button"
-          onClick={sendMessage}
-          disabled={!input.trim() || isLoading}
-        >
-          ➤
-        </button>
-      </footer>
-
-      <style>{`
-        * {
-          box-sizing: border-box;
-          margin: 0;
-          padding: 0;
-        }
-
-        body {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          background: #0a1628;
-          color: #fff;
-        }
-
-        .app {
-          display: flex;
-          flex-direction: column;
-          height: 100vh;
-          max-width: 600px;
-          margin: 0 auto;
-        }
-
-        .header {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 16px;
-          background: linear-gradient(180deg, #1a2a4a 0%, #0a1628 100%);
-          border-bottom: 1px solid #2a3a5a;
-        }
-
-        .avatar {
-          width: 48px;
-          height: 48px;
-          border-radius: 50%;
-          overflow: hidden;
-          border: 2px solid #4a6a9a;
-        }
-
-        .avatar img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
-
-        .title h1 {
-          font-size: 20px;
-          font-weight: 600;
-        }
-
-        .subtitle {
-          font-size: 12px;
-          color: #8a9aba;
-        }
-
-        .voice-toggle {
-          margin-left: auto;
-          background: none;
-          border: none;
-          font-size: 24px;
-          cursor: pointer;
-          opacity: 0.8;
-        }
-
-        .voice-toggle:hover {
-          opacity: 1;
-        }
-
-        .messages {
-          flex: 1;
-          overflow-y: auto;
-          padding: 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-
-        .message {
-          max-width: 85%;
-          padding: 12px 16px;
-          border-radius: 16px;
-        }
-
-        .message.user {
-          align-self: flex-end;
-          background: #3a6aca;
-          border-bottom-right-radius: 4px;
-        }
-
-        .message.assistant {
-          align-self: flex-start;
-          background: #1a2a4a;
-          border-bottom-left-radius: 4px;
-        }
-
-        .message-content {
-          line-height: 1.5;
-        }
-
-        .message-time {
-          font-size: 10px;
-          color: #8a9aba;
-          margin-top: 4px;
-        }
-
-        .typing-indicator {
-          display: flex;
-          gap: 4px;
-        }
-
-        .typing-indicator span {
-          width: 8px;
-          height: 8px;
-          background: #4a6a9a;
-          border-radius: 50%;
-          animation: bounce 1.4s infinite;
-        }
-
-        .typing-indicator span:nth-child(2) {
-          animation-delay: 0.2s;
-        }
-
-        .typing-indicator span:nth-child(3) {
-          animation-delay: 0.4s;
-        }
-
-        @keyframes bounce {
-          0%, 80%, 100% { transform: translateY(0); }
-          40% { transform: translateY(-8px); }
-        }
-
-        .input-area {
-          display: flex;
-          gap: 8px;
-          padding: 16px;
-          background: #1a2a4a;
-          border-top: 1px solid #2a3a5a;
-        }
-
-        .input-area input {
-          flex: 1;
-          padding: 12px 16px;
-          border-radius: 24px;
-          border: 1px solid #3a4a6a;
-          background: #0a1628;
-          color: #fff;
-          font-size: 16px;
-        }
-
-        .input-area input::placeholder {
-          color: #6a7a9a;
-        }
-
-        .input-area input:focus {
-          outline: none;
-          border-color: #4a7aca;
-        }
-
-        .mic-button, .send-button {
-          width: 48px;
-          height: 48px;
-          border-radius: 50%;
-          border: none;
-          background: #3a6aca;
-          color: #fff;
-          font-size: 20px;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .mic-button:hover, .send-button:hover {
-          background: #4a7ada;
-        }
-
-        .mic-button.listening {
-          background: #ca3a3a;
-          animation: pulse 1s infinite;
-        }
-
-        .send-button:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        @keyframes pulse {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.1); }
-        }
-      `}</style>
+      </div>
     </div>
   );
 }
